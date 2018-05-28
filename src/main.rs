@@ -1,10 +1,12 @@
 #![allow(unused_imports)]
 
+extern crate dotenv;
 extern crate grpc;
 extern crate protobuf;
-extern crate tls_api;
 extern crate redis;
-extern crate dotenv;
+extern crate rustracing;
+extern crate rustracing_jaeger;
+extern crate tls_api;
 
 use std::env;
 use std::thread;
