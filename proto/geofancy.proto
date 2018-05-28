@@ -1,0 +1,112 @@
+// version = 0.0.1
+
+// Version Changelog:
+//
+// v0.0.1
+// - initial message stubs, shape of messages not fully defined
+
+syntax = "proto3";
+
+package geofancy;
+
+option java_multiple_files = true;
+option java_package = "za.co.movinggauteng.protos.geofancy";
+option java_outer_classname = "GeofancyProto";
+
+service GeofancyService {
+    // CUD on entries
+    rpc CreateWebHook (GeoFence) returns (CommandResult) {}
+    rpc DeleteWebHook (SearchString) returns (CommandResult) {}
+    rpc SetDocument (Document) returns (CommandResult) {}
+    rpc DeleteDocument (Document) returns (CommandResult) {}
+    rpc DeleteCollection (Document) returns (CommandResult) {}
+}
+
+message CommandResult {
+
+    enum CommandStatus {
+        COMMAND_OK = 0;
+        COMMAND_FAILURE = 1;
+    }
+
+    CommandStatus status = 1;
+    string message = 2;
+}
+
+message Document {
+    string collection = 1;
+    string id = 2;
+    // TODO add FIELD data as a map/set
+    oneof geo {
+        Point point = 4;
+        LineString line = 5;
+        Bounds bounds = 6;
+        string geojson = 7;
+    }
+    uint64 expiry = 10; // EX
+    bool notExist = 11; // NX
+    bool alreadyExist = 12; // XX
+}
+
+message Bounds {
+    Coordinate southWest = 1;
+    Coordinate northEast = 2;
+}
+
+message GeoFence {
+    string id = 1;
+    string endpoint = 2;
+    oneof query {
+        QueryNearby nearby = 3;
+        QueryWithin within = 4;
+        QueryIntersects intersects = 5;
+    }
+    string match = 6;
+    repeated Detect detect = 7;
+    repeated Commands commands = 8;
+    // fence
+    // TODO support more types per spec if we need them
+    Point point = 9;
+    uint64 distance = 10;
+
+    message QueryNearby {
+        string collection = 1;
+    }
+    message QueryWithin {
+        string collection = 1;
+    }
+    message QueryIntersects {
+        string collection = 1;
+    }
+
+    enum Detect {
+        INSIDE = 0;
+        OUTSIDE = 1;
+        ENTER = 2;
+        EXIT = 3;
+        CROSS = 4;
+    }
+
+    enum Commands {
+        SET = 0;
+        DEL = 1;
+        DROP = 2;
+    }
+}
+
+message Point {
+    Coordinate coord = 1;
+}
+
+message LineString {
+    repeated Coordinate coords = 1;
+}
+
+message Coordinate {
+    double lat = 1;
+    double lng = 2;
+}
+
+message SearchString {
+    string value = 1;
+}

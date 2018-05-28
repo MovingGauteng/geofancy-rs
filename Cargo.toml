@@ -1,0 +1,21 @@
+[package]
+name = "geofancy-rust"
+version = "0.1.0"
+authors = ["Neville Dipale <nevilledips@gmail.com>"]
+build = "build.rs"
+
+[dependencies]
+redis               = "0.8"
+grpc                = "~0.4"
+protobuf            = "~1.6"
+futures             = "~0.1"
+futures-cpupool     = "~0.1"
+tls-api             = "0.1.19"
+bytes               = "~0.4"
+dotenv              = "~0.12"
+rustracing          = "~0.1"
+rustracing_jaeger   = "~0.1"
+httpbis             = "0.6.1"
+
+[build-dependencies]
+protoc-rust-grpc    = "0.4.0"

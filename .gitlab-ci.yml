@@ -1,0 +1,27 @@
+# Official language image. Look for the different tagged releases at:
+# https://hub.docker.com/r/library/rust/tags/
+image: "rust:latest"
+
+# Optional: Pick zero or more services to be used on all builds.
+# Only needed when using a docker container to run your tests in.
+# Check out: http://docs.gitlab.com/ce/ci/docker/using_docker_images.html#what-is-a-service
+#services:
+#  - mysql:latest
+#  - redis:latest
+#  - postgres:latest
+
+before_script:
+# install unzip
+- apt update -yqq
+- apt install -yqq unzip
+# install protoc
+- curl -OL https://github.com/google/protobuf/releases/download/v3.5.1/protoc-3.5.1-linux-x86_64.zip
+- unzip protoc-3.5.1-linux-x86_64.zip -d protoc3
+- mv protoc3/bin/* /usr/local/bin/
+- mv protoc3/include/* /usr/local/include/
+
+# Use cargo to test the project
+test:cargo:
+  script:
+  - rustc --version && cargo --version      # Print version info for debugging
+  - cargo test --all --verbose
