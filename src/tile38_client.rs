@@ -15,9 +15,9 @@ fn connect() -> Result<redis::Connection, redis::RedisError> {
 pub fn set_point(collection: &str, id: &str, point: &Point) -> Result<CommandResult, RedisError> {
     let connection = connect().unwrap();
 
-    let a : () = try!(redis::cmd("SET").arg(collection).arg(id).arg("POINT")
+    let a : () = redis::cmd("SET").arg(collection).arg(id).arg("POINT")
         .arg(point.get_coord().get_lat())
-        .arg(point.get_coord().get_lng()).query(&connection));
+        .arg(point.get_coord().get_lng()).query(&connection)?;
 
     println!("{:?}", a);
 
@@ -89,7 +89,7 @@ pub fn set_webhook(geofence: &GeoFence) -> Result<CommandResult, RedisError> {
 pub fn delete_webhook(search_string: &SearchString) -> Result<CommandResult, redis::RedisError> {
     let connection = connect().unwrap();
     
-    let a : () = try!(redis::cmd("PDELHOOK").arg(search_string.get_value()).query(&connection));
+    let a : () = redis::cmd("PDELHOOK").arg(search_string.get_value()).query(&connection)?;
 
     println!("{:?}", a);
 
