@@ -1,46 +1,69 @@
-#![allow(unused_imports)]
+// #![allow(unused_imports)]
 
+#[macro_use]
+extern crate log;
 extern crate dotenv;
-extern crate grpc;
-extern crate protobuf;
+extern crate prost;
+#[macro_use]
+extern crate prost_derive;
 extern crate redis;
 extern crate rustracing;
 extern crate rustracing_jaeger;
-extern crate tls_api;
+extern crate tokio;
+extern crate futures;
+extern crate tokio_core;
+extern crate tower_h2;
+extern crate tower_grpc;
 
 use std::env;
-use std::thread;
+
+use futures::{Stream, Future};
+
+use tokio_core::net::TcpListener;
+use tokio_core::reactor::Core;
+use tower_h2::Server;
 
 use dotenv::dotenv;
-use tls_api::TlsAcceptorBuilder;
-use grpc::*;
 
 use geofancy_server::GeofancyImpl;
 
-use geofancy_grpc::*;
-
 fn main() {
-    let mut server = grpc::ServerBuilder::new_plain();
 
     dotenv().ok();
 
-    let grpc_server_port: u16 = u64::from_str_radix(env::var("GRPC_SERVER_PORT").unwrap().as_str(), 10).unwrap() as u16;
+    let grpc_server_port = env::var("GRPC_SERVER_PORT").unwrap();
 
-    server.http.set_port(grpc_server_port);
+    let mut core = Core::new().unwrap();
+    let reactor = core.handle();
 
-    server.add_service(GeofancyServiceServer::new_service_def(GeofancyImpl));
-    server.http.set_cpu_pool_threads(2);
+    let handler = GeofancyImpl {};
 
-    let _server = server.build().expect("server");
+    let new_service = geofancy::server::GeofancyServiceServer::new(handler);
 
-    println!("geofancy server started on port {}", grpc_server_port);
+    let h2 = Server::new(new_service, Default::default(), reactor.clone());
 
-    loop {
-        thread::park();
-    }
+    let a = format!("127.0.0.1:{}", &grpc_server_port);
+
+    let addr = a.parse().unwrap();
+    let bind = TcpListener::bind(&addr, &reactor).expect("bind");
+
+    println!("listening on {:?}", addr);
+
+    let serve = bind.incoming()
+        .fold((h2, reactor), |(h2, reactor), (sock, _)| {
+            if let Err(e) = sock.set_nodelay(true) {
+                return Err(e);
+            }
+
+            let serve = h2.serve(sock);
+            reactor.spawn(serve.map_err(|e| error!("h2 error: {:?}", e)));
+
+            Ok((h2, reactor))
+        });
+
+    core.run(serve).unwrap();
 }
 
 mod geofancy_server;
 mod geofancy;
-mod geofancy_grpc;
 mod tile38_client;

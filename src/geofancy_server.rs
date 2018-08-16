@@ -1,27 +1,33 @@
 #![allow(unused_imports)]
 
-use grpc::*;
 use rustracing::log;
 use rustracing::sampler::AllSampler;
 use rustracing::tag::{Tag, TagValue};
 use rustracing_jaeger::Tracer;
 use rustracing_jaeger::reporter::JaegerCompactReporter;
 
-use geofancy_grpc::*;
+use futures::{future, Future, Stream};
+use futures::sync::mpsc;
+//use tower_h2::Server;
+use tower_grpc::{Request, Response, Streaming, Error};
+
 use geofancy::*;
 use tile38_client::*;
 
-pub struct GeofancyImpl;
+#[derive(Clone)]
+pub struct GeofancyImpl {}
 
-impl GeofancyService for GeofancyImpl {
+impl server::GeofancyService for GeofancyImpl {
 
-    fn create_web_hook(&self, _o: RequestOptions, request: GeoFence) -> SingleResponse<CommandResult> {
+    type CreateWebHookFuture = Box<Future<Item = Response<CommandResult>, Error = Error>>;
+
+    fn create_web_hook(&mut self, request: Request<GeoFence>) -> Self::CreateWebHookFuture {
 
         let (tracer, span_rx) = Tracer::new(AllSampler);
 
         let reporter = get_reporter();
 
-        let result: Result<CommandResult>;
+        let result: Result<CommandResult, _>;
 
         {
             let mut span = tracer.span("geofancy.GeofancyService/CreateWebHook")
@@ -32,13 +38,13 @@ impl GeofancyService for GeofancyImpl {
                 log.std().message("Creating webhook");
             });
 
-            let res = set_webhook(&request);
+            let res = set_webhook(&request.into_inner());
             match res {
-                Err(_e) => {
+                Err(e) => {
                     span.log(|log| {
                         log.error().message("Failure setting webhook");
                     });
-                    result = Err(Error::Other("Failure setting webhook"));
+                    result = Err(Error::from(e));
                 },
                 Ok(r) => {
                     span.log(|log| {
@@ -52,22 +58,24 @@ impl GeofancyService for GeofancyImpl {
         match result {
             Ok(r) => {
                 reporter.report(&span_rx.try_iter().collect::<Vec<_>>()).unwrap();
-                SingleResponse::completed(r)
+                Box::new(future::ok(Response::new(r)))
             },
-            Err(e) => {
+            Err(_e) => {
                 reporter.report(&span_rx.try_iter().collect::<Vec<_>>()).unwrap();
-                SingleResponse::err(e)
+                Box::new(future::err(Error::Inner(())))
             }
         }
     }
 
-    fn delete_web_hook(&self, _o: RequestOptions, request: SearchString) -> SingleResponse<CommandResult> {
+    type DeleteWebHookFuture = Box<Future<Item = Response<CommandResult>, Error = Error>>;
+
+    fn delete_web_hook(&mut self, request: Request<SearchString>) -> Self::DeleteWebHookFuture {
 
         let (tracer, span_rx) = Tracer::new(AllSampler);
 
         let reporter = get_reporter();
 
-        let result: Result<CommandResult>;
+        let result: Result<CommandResult, _>;
 
         {
             let mut span = tracer.span("geofancy.GeofancyService/DeleteWebHook")
@@ -78,13 +86,13 @@ impl GeofancyService for GeofancyImpl {
                 log.std().message("Deleting webhook");
             });
 
-            let res = delete_webhook(&request);
+            let res = delete_webhook(request.into_inner());
             match res {
-                Err(_e) => {
+                Err(e) => {
                     span.log(|log| {
                         log.error().message("Failure deleting webhook");
                     });
-                    result = Err(Error::Other("Failure deleting webhook"));
+                    result = Err(Error::from(e));
                 },
                 Ok(r) => {
                     span.log(|log| {
@@ -98,22 +106,24 @@ impl GeofancyService for GeofancyImpl {
         match result {
             Ok(r) => {
                 reporter.report(&span_rx.try_iter().collect::<Vec<_>>()).unwrap();
-                SingleResponse::completed(r)
+                Box::new(future::ok(Response::new(r)))
             },
-            Err(e) => {
+            Err(_e) => {
                 reporter.report(&span_rx.try_iter().collect::<Vec<_>>()).unwrap();
-                SingleResponse::err(e)
+                Box::new(future::err(Error::Inner(())))
             }
         }
     }
 
-    fn set_document(&self, _o: RequestOptions, request: Document) -> SingleResponse<CommandResult> {
+    type SetDocumentFuture = Box<Future<Item = Response<CommandResult>, Error = Error>>;
+
+    fn set_document(&mut self, request: Request<Document>) -> Self::SetDocumentFuture {
 
         let (tracer, span_rx) = Tracer::new(AllSampler);
 
         let reporter = get_reporter();
 
-        let result: Result<CommandResult>;
+        let result: Result<CommandResult, _>;
 
         {
 
@@ -125,67 +135,70 @@ impl GeofancyService for GeofancyImpl {
                 log.std().message("Setting document");
             });
 
-            let id = &request.get_id();
-            let collection = &request.get_collection();
+            let doc = request.into_inner();
 
-            if request.has_point() {
-                let point = request.get_point();
-                let res = set_point(&collection, &id, &point);
-                match res {
-                    Err(_e) => {
-                        span.log(|log| {
-                            log.error().message("Failure setting document");
-                        });
-                        result = Err(Error::Other("Failure setting document"));
-                    },
-                    Ok(r) => {
-                        span.log(|log| {
-                            log.std().message("Successfully created document");
-                        });
-                        result = Ok(r);
+            let id = &doc.id;
+            let collection = &doc.collection;
+
+            match doc.geo.unwrap() {
+                document::Geo::Bounds(_bounds) => {
+                    span.log(|log| {
+                        log.error().message("Unimplemented method");
+                    });
+                    unimplemented!()
+                },
+                document::Geo::Geojson(_geo_json) => {
+                    span.log(|log| {
+                        log.error().message("Unimplemented method");
+                    });
+                    unimplemented!()
+                },
+                document::Geo::Line(_line) => {
+                    span.log(|log| {
+                        log.error().message("Unimplemented method");
+                    });
+                    unimplemented!()
+                },
+                document::Geo::Point(point) => {
+                    let res = set_point(&collection, &id, &point);
+                    match res {
+                        Err(e) => {
+                            span.log(|log| {
+                                log.error().message("Failure setting document");
+                            });
+                            result = Err(Error::from(e));
+                        },
+                        Ok(r) => {
+                            span.log(|log| {
+                                log.std().message("Successfully created document");
+                            });
+                            result = Ok(r);
+                        }
                     }
                 }
-            } else if request.has_line() {
-                span.log(|log| {
-                    log.error().message("Unimplemented method");
-                });
-                result = Err(Error::Other("Unimplemented method for has line"));
-            } else if request.has_bounds() {
-                span.log(|log| {
-                    log.error().message("Unimplemented method");
-                });
-                result = Err(Error::Other("Unimplemented method for has bounds"));
-            } else if request.has_geojson() {
-                span.log(|log| {
-                    log.error().message("Unimplemented method");
-                });
-                result = Err(Error::Other("Unimplemented method for has geojson"));
-            } else {
-                span.log(|log| {
-                    log.error().message("Unimplemented method");
-                });
-                result = Err(Error::Other("Unknown geo option"));
             }
         }
 
         match result {
             Ok(r) => {
                 reporter.report(&span_rx.try_iter().collect::<Vec<_>>()).unwrap();
-                SingleResponse::completed(r)
+                Box::new(future::ok(Response::new(r)))
             },
-            Err(e) => {
+            Err(_e) => {
                 reporter.report(&span_rx.try_iter().collect::<Vec<_>>()).unwrap();
-                SingleResponse::err(e)
+                Box::new(future::err(Error::Inner(())))
             }
         }
     }
 
-    fn delete_document(&self, _o: RequestOptions, request: Document) -> SingleResponse<CommandResult> {
+    type DeleteDocumentFuture = Box<Future<Item = Response<CommandResult>, Error = Error>>;
+
+    fn delete_document(&mut self, request: Request<Document>) -> Self::DeleteDocumentFuture {
         let (tracer, span_rx) = Tracer::new(AllSampler);
 
         let reporter = get_reporter();
 
-        let result: Result<CommandResult>;
+        let result: Result<CommandResult, _>;
 
         {
 
@@ -197,13 +210,15 @@ impl GeofancyService for GeofancyImpl {
                 log.std().message("Deleting document");
             });
 
-            let res = delete_document(request.get_collection(), request.get_id());
+            let doc = request.into_inner();
+
+            let res = delete_document(&doc.collection, &doc.id);
             match res {
-                Err(_e) => {
+                Err(e) => {
                     span.log(|log| {
                         log.error().message("Failure deleting document");
                     });
-                    result = Err(Error::Other("Failure deleting document"));
+                    result = Err(Error::from(e));
                 },
                 Ok(r) => {
                     span.log(|log| {
@@ -217,21 +232,23 @@ impl GeofancyService for GeofancyImpl {
         match result {
             Ok(r) => {
                 reporter.report(&span_rx.try_iter().collect::<Vec<_>>()).unwrap();
-                SingleResponse::completed(r)
+                Box::new(future::ok(Response::new(r)))
             },
-            Err(e) => {
+            Err(_e) => {
                 reporter.report(&span_rx.try_iter().collect::<Vec<_>>()).unwrap();
-                SingleResponse::err(e)
+                Box::new(future::err(Error::Inner(())))
             }
         }
     }
 
-    fn delete_collection(&self, _o: RequestOptions, request: Document) -> SingleResponse<CommandResult> {
+    type DeleteCollectionFuture = Box<Future<Item = Response<CommandResult>, Error = Error>>;
+
+    fn delete_collection(&mut self, request: Request<Document>) -> Self::DeleteCollectionFuture {
         let (tracer, span_rx) = Tracer::new(AllSampler);
 
         let reporter = get_reporter();
 
-        let result: Result<CommandResult>;
+        let result: Result<CommandResult, _>;
 
         {
 
@@ -243,13 +260,15 @@ impl GeofancyService for GeofancyImpl {
                 log.std().message("Deleting collection");
             });
 
-            let res = delete_collection(request.get_collection());
+            let doc = request.into_inner();
+
+            let res = delete_collection(&doc.collection);
             match res {
-                Err(_e) => {
+                Err(e) => {
                     span.log(|log| {
                         log.error().message("Failure deleting collection");
                     });
-                    result = Err(Error::Other("Failure deleting collection"));
+                    result = Err(Error::from(e));
                 },
                 Ok(r) => {
                     span.log(|log| {
@@ -263,11 +282,11 @@ impl GeofancyService for GeofancyImpl {
         match result {
             Ok(r) => {
                 reporter.report(&span_rx.try_iter().collect::<Vec<_>>()).unwrap();
-                SingleResponse::completed(r)
+                Box::new(future::ok(Response::new(r)))
             },
-            Err(e) => {
+            Err(_e) => {
                 reporter.report(&span_rx.try_iter().collect::<Vec<_>>()).unwrap();
-                SingleResponse::err(e)
+                Box::new(future::err(Error::Inner(())))
             }
         }
     }
