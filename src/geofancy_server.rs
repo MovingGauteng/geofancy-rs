@@ -38,7 +38,7 @@ impl server::GeofancyService for GeofancyImpl {
                 log.std().message("Creating webhook");
             });
 
-            let res = set_webhook(&request.into_inner());
+            let res = set_webhook(request.into_inner());
             match res {
                 Err(e) => {
                     span.log(|log| {
@@ -160,7 +160,7 @@ impl server::GeofancyService for GeofancyImpl {
                     unimplemented!()
                 },
                 document::Geo::Point(point) => {
-                    let res = set_point(&collection, &id, &point);
+                    let res = set_point(&collection, &id, point);
                     match res {
                         Err(e) => {
                             span.log(|log| {
