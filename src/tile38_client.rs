@@ -156,3 +156,27 @@ pub fn delete_collection(collection: &str) -> Result<CommandResult, redis::Redis
     
     Ok(success)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_point_test() {
+        env::set_var("TILE38_CONNECTION", "redis://localhost:9851/0");
+        let point = Point {
+            coord: Some(Coordinate {
+                lat: 12.355,
+                lng: -26.215
+            })
+        };
+        let result = set_point("test-collection", "test-id", point);
+        // println!("{:?}", point);
+        match result {
+            Ok(result) => {
+                assert!(result.status == 0);
+            },
+            Err(_e) => {}
+        }
+    }
+}
