@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn set_point_test() {
-        env::set_var("TILE38_CONNECTION", "redis://localhost:9851/0");
+        env::set_var("TILE38_CONNECTION", "redis://tile38:9851/0");
         let point = Point {
             coord: Some(Coordinate {
                 lat: 12.355,
