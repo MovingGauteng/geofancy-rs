@@ -179,4 +179,80 @@ mod tests {
             Err(_e) => {}
         }
     }
+
+    #[test]
+    fn set_webhook_test() {
+        env::set_var("TILE38_CONNECTION", "redis://tile38-tile38:9851/0");
+        let geofence = GeoFence {
+            id: "my-id".to_string(),
+            endpoint: "http://localhost/endpoint".to_string(),
+            query: Some(geo_fence::Query::Nearby(geo_fence::QueryNearby {
+                collection: "test-collection".to_string()
+            })),
+            match_: "*match*".to_string(),
+            detect: vec![1],
+            commands: vec![1],
+            point: Some(Point {
+                coord: Some(Coordinate {
+                    lat: 12.355,
+                    lng: -26.215
+                })
+            }),
+            distance: 100u64
+        };
+
+        let result = set_webhook(geofence);
+
+        match result {
+            Ok(result) => {
+                assert!(result.status == 0);
+            },
+            Err(_e) => {}
+        }
+    }
+
+    #[test]
+    fn delete_webhook_test() {
+        env::set_var("TILE38_CONNECTION", "redis://tile38-tile38:9851/0");
+        let string = SearchString {
+            value: "*match*".to_string()
+        };
+
+        let result = delete_webhook(string);
+
+        match result {
+            Ok(result) => {
+                assert!(result.status == 0);
+            },
+            Err(_e) => {}
+        }
+    }
+
+    #[test]
+    fn delete_document_test() {
+        env::set_var("TILE38_CONNECTION", "redis://tile38-tile38:9851/0");
+        let result = delete_document("test-collection", "my-id");
+
+        match result {
+            Ok(result) => {
+                assert!(result.status == 0);
+            },
+            Err(_e) => {}
+        }
+
+    }
+
+    #[test]
+    fn delete_collection_test() {
+        env::set_var("TILE38_CONNECTION", "redis://tile38-tile38:9851/0");
+
+        let result = delete_collection("test-collection");
+
+        match result {
+            Ok(result) => {
+                assert!(result.status == 0);
+            },
+            Err(_e) => {}
+        }
+    }
 }
