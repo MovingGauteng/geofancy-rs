@@ -1,38 +1,47 @@
-extern crate redis;
-
 use std::env;
 
-use redis::*;
+use redis::RedisError;
 
-use geofancy;
-use geofancy::*;
+use crate::geofancy::{self, *};
 
-fn connect() -> Result<redis::Connection, redis::RedisError> {
+async fn connect() -> Result<redis::aio::MultiplexedConnection, RedisError> {
     let host = env::var("TILE38_CONNECTION").unwrap();
-    redis::Client::open(host.as_str())?.get_connection()
+    redis::Client::open(host.as_str())?
+        .get_multiplexed_async_connection_with_timeouts(
+            std::time::Duration::from_secs(5),
+            std::time::Duration::from_secs(5),
+        )
+        .await
 }
 
-pub fn set_point(collection: &str, id: &str, point: Point) -> Result<CommandResult, RedisError> {
-    let connection = connect().unwrap();
+pub async fn set_point(
+    collection: &str,
+    id: &str,
+    point: Point,
+) -> Result<CommandResult, RedisError> {
+    let mut connection = connect().await?;
 
     let coordinates = point.coord.unwrap();
 
-    let a : () = redis::cmd("SET").arg(collection).arg(id).arg("POINT")
+    redis::cmd("SET")
+        .arg(collection)
+        .arg(id)
+        .arg("POINT")
         .arg(coordinates.lat)
-        .arg(coordinates.lng).query(&connection)?;
-
-    println!("{:?}", a);
+        .arg(coordinates.lng)
+        .query_async(&mut connection)
+        .await?;
 
     let success = CommandResult {
         status: 0,
         ..Default::default()
     };
-    
+
     Ok(success)
 }
 
-pub fn set_webhook(geofence: GeoFence) -> Result<CommandResult, RedisError> {
-    let connection = connect().unwrap();
+pub async fn set_webhook(geofence: GeoFence) -> Result<CommandResult, RedisError> {
+    let mut connection = connect().await?;
 
     let mut q = redis::cmd("SETHOOK");
     q.arg(geofence.id.as_str()).arg(geofence.endpoint.as_str());
@@ -46,23 +55,24 @@ pub fn set_webhook(geofence: GeoFence) -> Result<CommandResult, RedisError> {
         }
     }
 
-
-    q.arg("MATCH").arg(geofence.match_.as_str())
-        .arg("FENCE");
+    q.arg("MATCH").arg(geofence.r#match.as_str()).arg("FENCE");
 
     // detect
-    let detect: Vec<&str> = geofence.detect.clone().into_iter().map(|d| {
-        match d {
+    let detect: Vec<&str> = geofence
+        .detect
+        .clone()
+        .into_iter()
+        .map(|d| match d {
             0 => "INSIDE",
             1 => "OUTSIDE",
             2 => "ENTER",
             3 => "EXIT",
             4 => "CROSS",
-            _ => ""
-        }
-    }).collect();
+            _ => "",
+        })
+        .collect();
 
-    if detect.len() > 0 {
+    if !detect.is_empty() {
         let mut detect_str: Vec<&str> = Vec::new();
 
         for x in detect {
@@ -72,16 +82,19 @@ pub fn set_webhook(geofence: GeoFence) -> Result<CommandResult, RedisError> {
     }
 
     // commands
-    let commands: Vec<&str> = geofence.commands.clone().into_iter().map(|c| {
-        match c {
+    let commands: Vec<&str> = geofence
+        .commands
+        .clone()
+        .into_iter()
+        .map(|c| match c {
             0 => "SET",
             1 => "DEL",
             2 => "DROP",
-            _ => ""
-        }
-    }).collect();
+            _ => "",
+        })
+        .collect();
 
-    if commands.len() > 0 {
+    if !commands.is_empty() {
         let mut commands_str: Vec<&str> = Vec::new();
 
         commands_str.push("");
@@ -100,9 +113,7 @@ pub fn set_webhook(geofence: GeoFence) -> Result<CommandResult, RedisError> {
         .arg(coordinate.lng)
         .arg(geofence.distance);
 
-    let a : () = try!(q.query(&connection));
-
-    println!("{:?}", a);
+    q.query_async(&mut connection).await?;
 
     let success = CommandResult {
         status: 0,
@@ -112,48 +123,52 @@ pub fn set_webhook(geofence: GeoFence) -> Result<CommandResult, RedisError> {
     Ok(success)
 }
 
-pub fn delete_webhook(search_string: SearchString) -> Result<CommandResult, redis::RedisError> {
-    let connection = connect().unwrap();
-    
-    let a : () = redis::cmd("PDELHOOK").arg(search_string.value).query(&connection)?;
+pub async fn delete_webhook(search_string: SearchString) -> Result<CommandResult, RedisError> {
+    let mut connection = connect().await?;
 
-    println!("{:?}", a);
+    redis::cmd("PDELHOOK")
+        .arg(search_string.value)
+        .query_async(&mut connection)
+        .await?;
 
     let success = CommandResult {
         status: 0,
         ..Default::default()
     };
-    
+
     Ok(success)
 }
 
-pub fn delete_document(collection: &str, id: &str) -> Result<CommandResult, redis::RedisError> {
-    let connection = connect().unwrap();
-    
-    let a : () = try!(redis::cmd("DEL").arg(collection).arg(id).query(&connection));
+pub async fn delete_document(collection: &str, id: &str) -> Result<CommandResult, RedisError> {
+    let mut connection = connect().await?;
 
-    println!("{:?}", a);
+    redis::cmd("DEL")
+        .arg(collection)
+        .arg(id)
+        .query_async(&mut connection)
+        .await?;
 
     let success = CommandResult {
         status: 0,
         ..Default::default()
     };
-    
+
     Ok(success)
 }
 
-pub fn delete_collection(collection: &str) -> Result<CommandResult, redis::RedisError> {
-    let connection = connect().unwrap();
-    
-    let a : () = try!(redis::cmd("DROP").arg(collection).query(&connection));
+pub async fn delete_collection(collection: &str) -> Result<CommandResult, RedisError> {
+    let mut connection = connect().await?;
 
-    println!("{:?}", a);
+    redis::cmd("DROP")
+        .arg(collection)
+        .query_async(&mut connection)
+        .await?;
 
     let success = CommandResult {
         status: 0,
         ..Default::default()
     };
-    
+
     Ok(success)
 }
 
@@ -161,21 +176,21 @@ pub fn delete_collection(collection: &str) -> Result<CommandResult, redis::Redis
 mod tests {
     use super::*;
 
-    #[test]
-    fn set_point_test() {
+    #[tokio::test]
+    async fn set_point_test() {
         env::set_var("TILE38_CONNECTION", "redis://tile38-tile38:9851/0");
         let point = Point {
             coord: Some(Coordinate {
                 lat: 12.355,
-                lng: -26.215
-            })
+                lng: -26.215,
+            }),
         };
-        let result = set_point("test-collection", "test-id", point);
+        let result = set_point("test-collection", "test-id", point).await;
         // println!("{:?}", point);
         match result {
             Ok(result) => {
                 assert!(result.status == 0);
-            },
+            }
             Err(_e) => {}
         }
     }
